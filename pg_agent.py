@@ -13,21 +13,21 @@ class NNAgent(object):
   def __init__(self, hparams, sess):
     # initialization
     self._s = sess
+    self._hparams = hparams
 
     # build the graph
     self._input = tf.placeholder(tf.float32,
             shape=[None, hparams['input_size']])
 
-    hidden1 = tf.contrib.layers.fully_connected(
+    hidden1 = tf.layers.dense(
             inputs=self._input,
-            num_outputs=hparams['hidden_size'],
-            activation_fn=tf.nn.relu,
-            weights_initializer=tf.random_normal)
+            units=hparams['hidden_size'],
+            activation=tf.nn.relu)
 
-    logits = tf.contrib.layers.fully_connected(
+    logits = tf.layers.dense(
             inputs=hidden1,
-            num_outputs=hparams['num_actions'],
-            activation_fn=None)
+            units=hparams['num_actions'],
+            activation=None)
 
     # op to sample an action
     self._sample = tf.reshape(tf.multinomial(logits, 1), [])
@@ -78,21 +78,19 @@ class PgAgent(BaseAgent):
             'learning_rate': 0.1
     }
 
-    # environment params
-    eparams = {
-            'num_batches': 40,
-            'ep_per_batch': 10
-    }
-
   def setup(self, obs_spec, action_spec):
     super(PgAgent, self).setup(obs_spec, action_spec)
-    self.
+    pass
 
   def reset(self):
     super(PgAgent, self).reset()
+    pass
 
   def step(self, obs):
     super(PgAgent, self).step(obs)
-
+    function_id = numpy.random.choice(obs.observation.available_actions)
+    args = [[numpy.random.randint(0, size) for size in arg.sizes]
+            for arg in self.action_spec.functions[function_id].args]
+    return actions.FunctionCall(function_id, args)
 
 
