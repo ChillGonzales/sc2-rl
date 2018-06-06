@@ -5,6 +5,7 @@ from pysc2.env.sc2_env import SC2Env
 from pysc2.env.run_loop import run_loop
 from ddpg_agent import DDPGAgent
 from collections import deque
+import time
 import baselines.common.tf_util as U
 import numpy as np
 
@@ -18,55 +19,47 @@ def main():
                 agent_interface_format=format,
                 visualize=True)
 
-  initial_state = game.reset()
   agent = DDPGAgent()
   agent.setup(game.observation_spec, game.action_spec, noise_type=["adaptive-param", "ou"])
 
   for i in range(0, 100):
     # assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
-    obs = initial_state
-    while not obs[0].last():
+    with U.single_threaded_session() as sess:
+      agent.initialize(sess)
+      sess.graph.finalize()
       step = 0
       episode = 0
       eval_episode_rewards_history = deque(maxlen=100)
       episode_rewards_history = deque(maxlen=100)
-      with U.single_threaded_session() as sess:
-        # Prepare everything.
-        agent.initialize(sess)
-        sess.graph.finalize()
+      # Prepare everything.
+      agent.reset()
+      obs = game.reset()[0] # Only care about 1 agent right now
+      done = False
+      episode_reward = 0.
+      episode_step = 0
+      episodes = 0
+      t = 0
 
-        agent.reset()
-        obs = env.reset()
-        done = False
-        episode_reward = 0.
-        episode_step = 0
-        episodes = 0
-        t = 0
+      epoch = 0
+      start_time = time.time()
 
-        epoch = 0
-        start_time = time.time()
-
-        epoch_episode_rewards = []
-        epoch_episode_steps = []
-        epoch_episode_eval_rewards = []
-        epoch_episode_eval_steps = []
-        epoch_start_time = time.time()
-        epoch_actions = []
-        epoch_qs = []
-        epoch_episodes = 0
-
+      epoch_episode_rewards = []
+      epoch_episode_steps = []
+      epoch_episode_eval_rewards = []
+      epoch_episode_eval_steps = []
+      epoch_start_time = time.time()
+      epoch_actions = []
+      epoch_qs = []
+      epoch_episodes = 0
+      while not obs.last():
         # Predict next action.
-        action, q = agent.pi(obs, apply_noise=True, compute_Q=True)
-        assert action.shape == env.action_space.shape
+        action, q = agent.pi(obs.observation, apply_noise=True, compute_Q=True)
+        # assert action.shape == game.action_spec
 
-        # Execute next action.
-        if rank == 0 and render:
-            env.render()
-        assert max_action.shape == action.shape
-        new_obs, r, done, info = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+        # assert max_action.shape == action.shape
+        obs = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+        
         t += 1
-        if rank == 0 and render:
-            env.render()
         episode_reward += r
         episode_step += 1
 
