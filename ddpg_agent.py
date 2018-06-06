@@ -19,10 +19,10 @@ def _xy_locs(mask):
   y, x = mask.nonzero()
   return list(zip(x, y))
 
-class DDPGAgent(Object):
+class DDPGAgent(object):
   """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
 
-  def setup(self, obs_shape, action_shape, nb_actions, noise_type, gamma, tau, layer_norm=True):
+  def setup(self, obs_shape, nb_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
     action_noise = None
     param_noise = None
 
@@ -44,12 +44,12 @@ class DDPGAgent(Object):
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components.
-    self.memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=obs_shape)
+    self.memory = Memory(limit=int(1e6), action_shape=(nb_actions), observation_shape=obs_shape)
     self.critic = Critic(layer_norm=layer_norm)
     self.actor = Actor(nb_actions, layer_norm=layer_norm)
 
     tf.reset_default_graph()
 
-    max_action = env.action_space.high
-    self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=env.observation_space.shape, 
-        action_shape=env.action_space.shape, gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
+    # max_action = env.action_space.high
+    self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
+        action_shape=(nb_actions), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
