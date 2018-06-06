@@ -5,6 +5,7 @@ import tensorflow as tf
 import baselines.ddpg.training as training
 from baselines.ddpg.models import Actor, Critic
 from baselines.ddpg.memory import Memory
+from baselines.ddpg.ddpg import DDPG
 from baselines.ddpg.noise import *
 
 _PLAYER_SELF = features.PlayerRelative.SELF
@@ -18,19 +19,16 @@ def _xy_locs(mask):
   y, x = mask.nonzero()
   return list(zip(x, y))
 
-class DDPGAgent(BaseAgent):
+class DDPGAgent(Object):
   """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
 
-  def __init__(self):
-    super(DDPGAgent, self).__init__()
-    pass
-
-  def setup(self, obs_spec, action_spec, noise_type):
-    super(DDPGAgent, self).setup(obs_spec, action_spec)
+  def setup(self, obs_spec, action_spec, noise_type, layer_norm=True):
     # Parse noise_type
     action_noise = None
     param_noise = None
-    nb_actions = env.action_space.shape[-1]
+
+    # we're outputting only a single action because it's continuous
+    nb_actions = 1
     for current_noise_type in noise_type.split(','):
         current_noise_type = current_noise_type.strip()
         if current_noise_type == 'none':
@@ -48,36 +46,19 @@ class DDPGAgent(BaseAgent):
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components.
-    memory = Memory(limit=int(1e6), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
-    critic = Critic(layer_norm=layer_norm)
-    actor = Actor(nb_actions, layer_norm=layer_norm)
+    self.memory = Memory(limit=int(1e6), action_shape=(1), observation_shape=obs_spec)
+    self.critic = Critic(layer_norm=layer_norm)
+    self.actor = Actor(nb_actions, action_bound=action_bound, layer_norm=layer_norm, discrete=False)
 
-    # Seed everything to make things reproducible.
-    seed = seed + 1000000 * rank
-    logger.info('rank {}: seed={}, logdir={}'.format(rank, seed, logger.get_dir()))
     tf.reset_default_graph()
-    set_global_seeds(seed)
-    env.seed(seed)
-    if eval_env is not None:
-        eval_env.seed(seed)
 
-    # Disable logging for rank != 0 to avoid noise.
-    if rank == 0:
-        start_time = time.time()
-    training.train(env=env, eval_env=eval_env, param_noise=param_noise,
-        action_noise=action_noise, actor=actor, critic=critic, memory=memory, **kwargs)
-    env.close()
-    if eval_env is not None:
-        eval_env.close()
-    if rank == 0:
-        logger.info('total runtime: {}s'.format(time.time() - start_time))
-    pass
+    max_action = env.action_space.high
+    # self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, env.observation_space.shape, env.action_space.shape,
+    #     gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
 
-  def reset(self):
-    super(DDPGAgent, self).reset()
-    pass
+def train(self, env):
+    # Need to refactor this
+    training.train(env=env, param_noise=self.param_noise, action_noise=self.action_noise, 
+        actor=self.actor, critic=self.critic, memory=self.memory)
 
-  def step(self, obs):
-    super(DDPGAgent, self).step(obs)
-
-
+    
