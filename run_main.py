@@ -8,9 +8,18 @@ from collections import deque
 import time
 import baselines.common.tf_util as U
 import numpy as np
+import tensorflow as tf
 
 Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
+
+def flattenFeatures(obs):
+  flat_list = np.array([]) 
+  for feature in ['feature_screen', 'available_actions', 'action_result', 'single_select', 'multi_select']:
+    for lst in obs[feature]:
+      flat_list = np.append(flat_list, lst)
+  flat_list.flatten()
+  return flat_list
 
 def runAgent(agent, game):
   # assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
@@ -24,6 +33,7 @@ def runAgent(agent, game):
     # Prepare everything.
     agent.reset()
     obs = game.reset()[0] # Only care about 1 agent right now
+    features, available_actions = obs.observation, obs.observation.available_actions
     done = False
     episode_reward = 0.
     episode_step = 0
@@ -43,11 +53,13 @@ def runAgent(agent, game):
     epoch_episodes = 0
     while not obs.last():
       # Predict next action.
-      action, q = agent.pi(obs.observation, apply_noise=True, compute_Q=True)
+      action, q = agent.step(flattenFeatures(features), available_actions)
       # assert action.shape == game.action_spec
+      print("Action: ", action)
 
       # assert max_action.shape == action.shape
-      obs = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+      new_obs = game.step([action])
+      features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
       
       t += 1
       episode_reward += r
@@ -60,25 +72,28 @@ def runAgent(agent, game):
       obs = new_obs
 
       if done:
-          # Episode done.
-          epoch_episode_rewards.append(episode_reward)
-          episode_rewards_history.append(episode_reward)
-          epoch_episode_steps.append(episode_step)
-          episode_reward = 0.
-          episode_step = 0
-          epoch_episodes += 1
-          episodes += 1
+        # Episode done.
+        epoch_episode_rewards.append(episode_reward)
+        episode_rewards_history.append(episode_reward)
+        epoch_episode_steps.append(episode_step)
+        episode_reward = 0.
+        episode_step = 0
+        epoch_episodes += 1
+        episodes += 1
 
-          agent.reset()
-          obs = env.reset()
+        agent.reset()
+        obs = game.reset()
 
     # Train.
     epoch_actor_losses = []
     epoch_critic_losses = []
     epoch_adaptive_distances = []
+    nb_train_steps = 100
+    batch_size = 50
+    param_noise_adaptation_interval = 25
     for t_train in range(nb_train_steps):
       # Adapt param noise, if necessary.
-      if memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
+      if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaptation_interval == 0:
           distance = agent.adapt_param_noise()
           epoch_adaptive_distances.append(distance)
 
@@ -88,23 +103,23 @@ def runAgent(agent, game):
       agent.update_target_net()
 
     # Evaluate.
-    eval_episode_rewards = []
-    eval_qs = []
-    if eval_env is not None:
-      eval_episode_reward = 0.
-      for t_rollout in range(nb_eval_steps):
-        eval_action, eval_q = agent.pi(eval_obs, apply_noise=False, compute_Q=True)
-        eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
-        if render_eval:
-          eval_env.render()
-        eval_episode_reward += eval_r
+    # eval_episode_rewards = []
+    # eval_qs = []
+    # if eval_env is not None:
+    #   eval_episode_reward = 0.
+    #   for t_rollout in range(nb_eval_steps):
+    #     eval_action, eval_q = agent.pi(eval_obs, apply_noise=False, compute_Q=True)
+    #     eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+    #     if render_eval:
+    #       eval_env.render()
+    #     eval_episode_reward += eval_r
 
-        eval_qs.append(eval_q)
-        if eval_done:
-          eval_obs = eval_env.reset()
-          eval_episode_rewards.append(eval_episode_reward)
-          eval_episode_rewards_history.append(eval_episode_reward)
-          eval_episode_reward = 0.  
+    #     eval_qs.append(eval_q)
+    #     if eval_done:
+    #       eval_obs = eval_env.reset()
+    #       eval_episode_rewards.append(eval_episode_reward)
+    #       eval_episode_rewards_history.append(eval_episode_reward)
+    #       eval_episode_reward = 0.  
 
 def main():
   dims = Dimensions(screen=(200, 200), minimap=(50, 50))
@@ -114,29 +129,12 @@ def main():
                 visualize=True)
 
   agent = DDPGAgent()
-  # obs_shape = game.observation_spec()
-  # nb_actions = game.action_spec()
-  # agent.setup(obs_shape, nb_actions, noise_type="adaptive-param_0.01,ou_0.01")
-  feature_keys = ['single_select', 'multi_select', 'build_queue', 'cargo', 'cargo_slots_available', 'feature_screen', 
-    'feature_minimap', 'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 'available_actions']
-  for i in range(0, 1):
-    timestep = game.reset()[0]
-    while not timestep.last():
-      #runAgent(agent, game)
-      action = [actions.FunctionCall(actions.FUNCTIONS.no_op.id, [])]
-      timestep = game.step(action)[0]
-      obs, reward, available_actions = timestep.observation, timestep.reward, timestep.observation.available_actions
-      flat_list = []
-      for lst in obs.feature_minimap:
-        flat_list.append(lst)
-      print(flat_list)
-
-
-      break
-      time.sleep(1)
-
-
-  # run_loop([RandomAgent()], env=game)
+  obs_shape = (680012, )
+  nb_actions = 10
+  agent.setup(obs_shape, nb_actions, noise_type="adaptive-param_0.01,ou_0.01")
+  runAgent(agent, game)
+  # feature_keys = ['single_select', 'multi_select', 'build_queue', 'cargo', 'cargo_slots_available', 'feature_screen', 
+  #   'feature_minimap', 'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 'available_actions']
 
 if __name__ == "__main__":
   import sys

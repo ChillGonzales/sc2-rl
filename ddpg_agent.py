@@ -20,36 +20,54 @@ def _xy_locs(mask):
   return list(zip(x, y))
 
 class DDPGAgent(object):
-  """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
+    """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
 
-  def setup(self, obs_shape, nb_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
-    action_noise = None
-    param_noise = None
+    def setup(self, obs_shape, nb_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
+        action_noise = None
+        param_noise = None
 
-    # Parse noise_type
-    for current_noise_type in noise_type.split(','):
-        current_noise_type = current_noise_type.strip()
-        if current_noise_type == 'none':
-            pass
-        elif 'adaptive-param' in current_noise_type:
-            _, stddev = current_noise_type.split('_')
-            param_noise = AdaptiveParamNoiseSpec(initial_stddev=float(stddev), desired_action_stddev=float(stddev))
-        elif 'normal' in current_noise_type:
-            _, stddev = current_noise_type.split('_')
-            action_noise = NormalActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
-        elif 'ou' in current_noise_type:
-            _, stddev = current_noise_type.split('_')
-            action_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
+        # Parse noise_type
+        for current_noise_type in noise_type.split(','):
+            current_noise_type = current_noise_type.strip()
+            if current_noise_type == 'none':
+                pass
+            elif 'adaptive-param' in current_noise_type:
+                _, stddev = current_noise_type.split('_')
+                param_noise = AdaptiveParamNoiseSpec(initial_stddev=float(stddev), desired_action_stddev=float(stddev))
+            elif 'normal' in current_noise_type:
+                _, stddev = current_noise_type.split('_')
+                action_noise = NormalActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
+            elif 'ou' in current_noise_type:
+                _, stddev = current_noise_type.split('_')
+                action_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
+            else:
+                raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
+
+        # Configure components.
+        self.memory = Memory(limit=int(100), action_shape=(nb_actions, ), observation_shape=obs_shape)
+        self.critic = Critic(layer_norm=layer_norm)
+        self.actor = Actor(nb_actions, layer_norm=layer_norm)
+
+        tf.reset_default_graph()
+
+        # max_action = env.action_space.high
+        self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
+            action_shape=(nb_actions, ), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
+
+    def step(self, obs, available_actions):
+        actions, q = self.agent.pi(obs, apply_noise=True, compute_Q=True)
+        # TODO: Do this with softmax. Also maybe invert the final tanh?
+        selected = actions.index(max(actions))
+        if (selected in available_actions):
+            function_id = selected
         else:
-            raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
+            function_id = np.random.choice(available_actions)
+        args = [[np.random.randint(0, size) for size in arg.sizes]
+                for arg in self.action_spec.functions[function_id].args]
+        return actions.FunctionCall(function_id, args), q
 
-    # Configure components.
-    self.memory = Memory(limit=int(1e6), action_shape=(nb_actions), observation_shape=obs_shape)
-    self.critic = Critic(layer_norm=layer_norm)
-    self.actor = Actor(nb_actions, layer_norm=layer_norm)
+    def reset(self):
+        self.agent.reset()
 
-    tf.reset_default_graph()
-
-    # max_action = env.action_space.high
-    self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
-        action_shape=(nb_actions), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
+    def initialize(self, sess):
+        self.agent.initialize(sess)
