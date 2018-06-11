@@ -99,13 +99,13 @@ def runAgent(agent, game):
     for t_train in range(nb_train_steps):
       # Adapt param noise, if necessary.
       if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaptation_interval == 0:
-          distance = agent.adapt_param_noise()
+          distance = agent.agent.adapt_param_noise()
           epoch_adaptive_distances.append(distance)
 
-      cl, al = agent.train()
+      cl, al = agent.agent.train()
       epoch_critic_losses.append(cl)
       epoch_actor_losses.append(al)
-      agent.update_target_net()
+      agent.agent.update_target_net()
 
     # Evaluate.
     # eval_episode_rewards = []
