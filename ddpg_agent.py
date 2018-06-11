@@ -47,7 +47,7 @@ class DDPGAgent(object):
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
         # Configure components.
-        self.memory = Memory(limit=int(100), action_shape=(nb_actions, ), observation_shape=obs_shape)
+        self.memory = Memory(limit=int(25), action_shape=(nb_actions, ), observation_shape=obs_shape)
         self.critic = Critic(layer_norm=layer_norm)
         self.actor = Actor(nb_actions, layer_norm=layer_norm)
 
@@ -72,7 +72,10 @@ class DDPGAgent(object):
             # print("Random:", function_id)
         args = [[np.random.randint(0, size) for size in arg.sizes]
                 for arg in self.action_spec[0].functions[function_id].args]
-        return actions.FunctionCall(function_id, args), q, function_id
+        # apparently 452 isn't implemented so skip
+        if function_id == 452:
+            return actions.FunctionCall(0, []), q, 0, False
+        return actions.FunctionCall(function_id, args), q, function_id, selected in available_actions
 
     def reset(self):
         self.agent.reset()
