@@ -12,6 +12,9 @@ import tensorflow as tf
 
 Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
+OBS_DIM = 680012
+ACT_DIM = 1 
+TOTAL_FN = 541
 
 def flattenFeatures(obs):
   flat_list = np.array([]) 
@@ -33,7 +36,7 @@ def runAgent(agent, game):
     # Prepare everything.
     agent.reset()
     obs = game.reset()[0] # Only care about 1 agent right now
-    features, available_actions = obs.observation, obs.observation.available_actions
+    features, available_actions = flattenFeatures(obs.observation), obs.observation.available_actions
     done = False
     episode_reward = 0.
     episode_step = 0
@@ -53,13 +56,14 @@ def runAgent(agent, game):
     epoch_episodes = 0
     while not obs.last():
       # Predict next action.
-      action, q = agent.step(flattenFeatures(features), available_actions)
+      action, q, action_index = agent.step(features, available_actions)
       # assert action.shape == game.action_spec
-      print("Action: ", action)
+      # print("Action: ", action)
 
       # assert max_action.shape == action.shape
-      new_obs = game.step([action])
-      features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
+      new_obs = game.step([action])[0]
+      new_features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
+      new_features = flattenFeatures(new_features)[:OBS_DIM]
       
       t += 1
       episode_reward += r
@@ -68,8 +72,9 @@ def runAgent(agent, game):
       # Book-keeping.
       epoch_actions.append(action)
       epoch_qs.append(q)
-      agent.store_transition(obs, action, r, new_obs, done)
+      agent.store_transition(features, action_index, r, new_features, done)
       obs = new_obs
+      features = new_features
 
       if done:
         # Episode done.
@@ -80,7 +85,7 @@ def runAgent(agent, game):
         episode_step = 0
         epoch_episodes += 1
         episodes += 1
-
+        print("Episode ", episodes, " complete. Total reward: ", episode_reward)
         agent.reset()
         obs = game.reset()
 
@@ -126,12 +131,12 @@ def main():
   format = AgentInterfaceFormat(feature_dimensions=dims)
   game = SC2Env(map_name="Simple64",
                 agent_interface_format=format,
-                visualize=True)
+                visualize=False)
 
-  agent = DDPGAgent()
-  obs_shape = (680012, )
-  nb_actions = 10
-  agent.setup(obs_shape, nb_actions, noise_type="adaptive-param_0.01,ou_0.01")
+  agent = DDPGAgent(game.action_spec())
+  obs_shape = (OBS_DIM, )
+  nb_actions = ACT_DIM
+  agent.setup(obs_shape, nb_actions, TOTAL_FN, noise_type="adaptive-param_0.01,ou_0.01")
   runAgent(agent, game)
   # feature_keys = ['single_select', 'multi_select', 'build_queue', 'cargo', 'cargo_slots_available', 'feature_screen', 
   #   'feature_minimap', 'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 'available_actions']

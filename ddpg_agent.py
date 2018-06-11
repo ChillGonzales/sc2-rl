@@ -21,10 +21,13 @@ def _xy_locs(mask):
 
 class DDPGAgent(object):
     """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
+    def __init__(self, action_spec):
+        self.action_spec = action_spec
 
-    def setup(self, obs_shape, nb_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
+    def setup(self, obs_shape, nb_actions, total_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
         action_noise = None
         param_noise = None
+        self.total_actions = total_actions
 
         # Parse noise_type
         for current_noise_type in noise_type.split(','):
@@ -55,19 +58,27 @@ class DDPGAgent(object):
             action_shape=(nb_actions, ), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
 
     def step(self, obs, available_actions):
-        actions, q = self.agent.pi(obs, apply_noise=True, compute_Q=True)
+        acts, q = self.agent.pi(obs, apply_noise=True, compute_Q=True)
         # TODO: Do this with softmax. Also maybe invert the final tanh?
-        selected = actions.index(max(actions))
+        z = (2 - (acts + 1)) / 2
+        selected = int(z * self.total_actions)
+        # print(acts)
+        # print(selected)
         if (selected in available_actions):
             function_id = selected
+            # print("Chosen:", selected)
         else:
             function_id = np.random.choice(available_actions)
+            # print("Random:", function_id)
         args = [[np.random.randint(0, size) for size in arg.sizes]
-                for arg in self.action_spec.functions[function_id].args]
-        return actions.FunctionCall(function_id, args), q
+                for arg in self.action_spec[0].functions[function_id].args]
+        return actions.FunctionCall(function_id, args), q, function_id
 
     def reset(self):
         self.agent.reset()
 
     def initialize(self, sess):
         self.agent.initialize(sess)
+    
+    def store_transition(self, obs, action, r, new_obs, done):
+        self.agent.store_transition(obs, action, r, new_obs, done)
