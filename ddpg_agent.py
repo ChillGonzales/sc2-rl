@@ -47,18 +47,18 @@ class DDPGAgent(object):
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
         # Configure components.
-        self.memory = Memory(limit=int(25), action_shape=(nb_actions, ), observation_shape=obs_shape)
+        self.memory = Memory(limit=int(50), action_shape=(nb_actions, ), observation_shape=obs_shape)
         self.critic = Critic(layer_norm=layer_norm)
         self.actor = Actor(nb_actions, layer_norm=layer_norm)
 
         tf.reset_default_graph()
 
         # max_action = env.action_space.high
-        self.agent = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
+        self.ddpg = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
             action_shape=(nb_actions, ), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
 
     def step(self, obs, available_actions):
-        acts, q = self.agent.pi(obs, apply_noise=True, compute_Q=True)
+        acts, q = self.ddpg.pi(obs, apply_noise=True, compute_Q=True)
         # TODO: Do this with softmax. Also maybe invert the final tanh?
         z = (2 - (acts + 1)) / 2
         selected = int(z * self.total_actions)
@@ -72,16 +72,13 @@ class DDPGAgent(object):
             # print("Random:", function_id)
         args = [[np.random.randint(0, size) for size in arg.sizes]
                 for arg in self.action_spec[0].functions[function_id].args]
-        # apparently 452 isn't implemented so skip
-        if function_id == 452:
-            return actions.FunctionCall(0, []), q, 0, False
         return actions.FunctionCall(function_id, args), q, function_id, selected in available_actions
 
     def reset(self):
-        self.agent.reset()
+        self.ddpg.reset()
 
     def initialize(self, sess):
-        self.agent.initialize(sess)
+        self.ddpg.initialize(sess)
     
     def store_transition(self, obs, action, r, new_obs, done):
-        self.agent.store_transition(obs, action, r, new_obs, done)
+        self.ddpg.store_transition(obs, action, r, new_obs, done)
