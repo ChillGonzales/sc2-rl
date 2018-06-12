@@ -64,7 +64,10 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
           chosen_count += 1
 
         # assert max_action.shape == action.shape
-        new_obs = game.step([action])[0]
+        try:
+          new_obs = game.step([action])[0]
+        except ValueError:
+          new_obs = game.step([actions.FunctionCall(0, [])])[0]
         new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[0], new_obs.observation.available_actions
         new_features = flattenFeatures(new_features)[:OBS_DIM]
         
@@ -83,7 +86,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
           epoch_episode_rewards.append(episode_reward)
           episode_rewards_history.append(episode_reward)
           epoch_episode_steps.append(episode_step)
-          print("Epoch ", epoch, " complete. Total reward: ", episode_reward, ". Chosen percent: ", (chosen_count/t)*100, ". Steps taken: ", t)
+          print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Chosen percent:", (chosen_count / t) * 100, ". Steps taken:", t, ". Win:", obs.reward != -1)
           episode_reward = 0.
           episode_step = 0
           chosen_count = 0
