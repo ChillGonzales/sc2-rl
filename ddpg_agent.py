@@ -73,14 +73,20 @@ class DDPGAgent(object):
         selected = int(normalized_actions[0] * self.total_actions)
         # If our choice isn't available then just take a random action.
         # TODO: Should we be masking the unavailable actions and then selecting based on that distribution?
-        if (selected in available_actions):
+        valid = selected in available_actions
+        if valid:
             function_id = selected
         else:
             function_id = np.random.choice(available_actions)
         required_args = self.action_spec[0].functions[function_id].args
-        args = [[int(normalized_actions[i] * size) for size in required_args[i].sizes]
-                         for i in range(len(required_args))]
-        return actions.FunctionCall(function_id, args), q, function_id, selected in available_actions
+        if valid:
+            args = [[int(normalized_actions[i] * size) for size in required_args[i].sizes]
+                            for i in range(len(required_args))]
+        else:
+            args = [[np.random.randint(0, size) for size in arg.sizes]
+                for arg in self.action_spec[0].functions[function_id].args]
+
+        return actions.FunctionCall(function_id, args), q, function_id, valid
 
     def reset(self):
         self.ddpg.reset()
