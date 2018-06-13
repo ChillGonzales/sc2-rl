@@ -61,13 +61,12 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
             print("Starting epoch ", epoch)
             # Perform rollouts.
             for t in range(nb_rollout_steps):
-                explore_prob = explore_prob * np.power(0.999, epoch)
+                explore_prob = explore_prob * np.power(0.99999, epoch)
                 # Predict next action.
                 action_values, q = agent.step(features)
 
                 # First index of actions is the function id, rest are argument values
                 fun_id = available_actions[int(action_values[0] * len(available_actions))]
-                # If our choice isn't available then just take a random action.
                 # TODO: Should we be masking the unavailable actions and then selecting based on that distribution?
                 # valid = fun_id in available_actions
                 if random.random() > explore_prob:
@@ -107,7 +106,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                     epoch_episode_rewards.append(episode_reward)
                     episode_rewards_history.append(episode_reward)
                     epoch_episode_steps.append(episode_step)
-                    print("Epoch", epoch, "complete. Total reward:", r, ". Final reward:", r, ". Chosen percent:",
+                    print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Chosen percent:",
                           (chosen_count / (t + 1)) * 100, ". Explore Prob: ", explore_prob, ". Steps taken:", t + 1, ". Win:", obs.reward != -1)
                     episode_reward = 0.
                     episode_step = 0
