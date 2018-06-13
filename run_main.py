@@ -1,7 +1,6 @@
-from pysc2.agents.random_agent import RandomAgent
 from pysc2.lib import features
 from pysc2.lib import actions
-from pysc2.env.sc2_env import SC2Env
+from pysc2.env.sc2_env import SC2Env, Agent, Race, Bot, Difficulty
 from pysc2.env.run_loop import run_loop
 from ddpg_agent import DDPGAgent
 from collections import deque
@@ -9,6 +8,7 @@ import time
 import baselines.common.tf_util as U
 import numpy as np
 import tensorflow as tf
+import random
 
 # Global variables/aliases
 Dimensions = features.Dimensions
@@ -56,19 +56,21 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
         epoch_qs = []
         epoch_episodes = 0
         chosen_count = 0
+        explore_prob = 0.9 
         for epoch in range(nb_epochs):
             print("Starting epoch ", epoch)
             # Perform rollouts.
             for t in range(nb_rollout_steps):
+                explore_prob = explore_prob * np.power(0.999, epoch)
                 # Predict next action.
                 action_values, q = agent.step(features)
 
                 # First index of actions is the function id, rest are argument values
-                fun_id = int(action_values[0] * agent.total_actions)
+                fun_id = available_actions[int(action_values[0] * len(available_actions))]
                 # If our choice isn't available then just take a random action.
                 # TODO: Should we be masking the unavailable actions and then selecting based on that distribution?
-                valid = fun_id in available_actions
-                if valid:
+                # valid = fun_id in available_actions
+                if random.random() > explore_prob:
                     required_args = agent.action_spec[0].functions[fun_id].args
                     args = [[int(action_values[i] * size) for size in required_args[i].sizes]
                                     for i in range(len(required_args))]
@@ -85,12 +87,8 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                 except ValueError:
                     new_obs = game.step([actions.FunctionCall(0, [])])[0]
 
-                new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[0], new_obs.observation.available_actions
+                new_features, r, available_actions = new_obs.observation, int(np.sum(new_obs.observation.score_cumulative[3:7])), new_obs.observation.available_actions
                 new_features = flattenFeatures(new_features)[:OBS_DIM]
-
-                # Zero out reward if we didn't pick a valid action
-                if not valid:
-                    r = 0
 
                 episode_reward += r
                 episode_step += 1
@@ -98,8 +96,9 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                 # Book-keeping.
                 epoch_actions.append(action)
                 epoch_qs.append(q)
-                if r != 0 or chosen_count <= 5:
-                    agent.store_transition(features, fun_id, r, new_features, done)
+                # if r != 0 or chosen_count <= 5:
+                agent.store_transition(features, fun_id, r, new_features, done)
+                    # last_nonzero_r = r
                 obs = new_obs
                 features = new_features
 
@@ -108,8 +107,8 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                     epoch_episode_rewards.append(episode_reward)
                     episode_rewards_history.append(episode_reward)
                     epoch_episode_steps.append(episode_step)
-                    print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Chosen percent:",
-                          (chosen_count / t) * 100, ". Steps taken:", t, ". Win:", obs.reward != -1)
+                    print("Epoch", epoch, "complete. Total reward:", r, ". Final reward:", r, ". Chosen percent:",
+                          (chosen_count / (t + 1)) * 100, ". Explore Prob: ", explore_prob, ". Steps taken:", t + 1, ". Win:", obs.reward != -1)
                     episode_reward = 0.
                     episode_step = 0
                     chosen_count = 0
@@ -162,6 +161,8 @@ def main():
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
     format = AgentInterfaceFormat(feature_dimensions=dims)
     game = SC2Env(map_name="Simple64",
+                  players=[Agent(Race.zerg), Bot(Race.terran, Difficulty.easy)],
+                  step_mul=16,
                   agent_interface_format=format,
                   visualize=False)
 
