@@ -10,6 +10,7 @@ import baselines.common.tf_util as U
 import numpy as np
 import tensorflow as tf
 
+# Global variables/aliases
 Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
 OBS_DIM = 680012
@@ -25,8 +26,8 @@ def flattenFeatures(obs):
     flat_list.flatten()
     return flat_list
 
-
 def runAgent(agent, game, nb_epochs, nb_rollout_steps):
+    saver = tf.train.Saver()
     with tf.Session() as sess:
         agent.initialize(sess)
         sess.graph.finalize()
@@ -39,11 +40,11 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
         obs = game.reset()[0]  # Only care about 1 agent right now
         features, available_actions = flattenFeatures(
             obs.observation), obs.observation.available_actions
-        print(len(features))
         done = False
         episode_reward = 0.
         episode_step = 0
 
+        # TODO: Implement epoch timing
         start_time = time.time()
 
         epoch_episode_rewards = []
@@ -107,7 +108,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                     epoch_episode_rewards.append(episode_reward)
                     episode_rewards_history.append(episode_reward)
                     epoch_episode_steps.append(episode_step)
-                    print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Chosen percent:",
+                    print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Chosen percent:",
                           (chosen_count / t) * 100, ". Steps taken:", t, ". Win:", obs.reward != -1)
                     episode_reward = 0.
                     episode_step = 0
@@ -121,7 +122,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
             epoch_actor_losses = []
             epoch_critic_losses = []
             epoch_adaptive_distances = []
-            nb_train_steps = 100
+            nb_train_steps = 25
             batch_size = 25
             param_noise_adaptation_interval = 25
             print("Training network...")
@@ -135,6 +136,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                 epoch_critic_losses.append(cl)
                 epoch_actor_losses.append(al)
                 agent.ddpg.update_target_net()
+            #saver.save(sess, 'model_epoch', global_step=1)
 
             # Evaluate.
             # eval_episode_rewards = []
@@ -154,7 +156,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
             #       eval_episode_rewards.append(eval_episode_reward)
             #       eval_episode_rewards_history.append(eval_episode_reward)
             #       eval_episode_reward = 0.
-
+        # saver.save(sess, 'model_final')
 
 def main():
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
