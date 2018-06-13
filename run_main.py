@@ -14,7 +14,7 @@ Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
 OBS_DIM = 680012
 ACT_DIM = 7
-TOTAL_FN = 451
+TOTAL_FN = 541
 
 
 def flattenFeatures(obs):
@@ -39,6 +39,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
         obs = game.reset()[0]  # Only care about 1 agent right now
         features, available_actions = flattenFeatures(
             obs.observation), obs.observation.available_actions
+        print(len(features))
         done = False
         episode_reward = 0.
         episode_step = 0
@@ -59,20 +60,36 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
             # Perform rollouts.
             for t in range(nb_rollout_steps):
                 # Predict next action.
-                action, q, action_index, chosen = agent.step(
-                    features, available_actions)
-                # print("Action: ", action)
-                if chosen:
+                action_values, q = agent.step(features)
+
+                # First index of actions is the function id, rest are argument values
+                fun_id = int(action_values[0] * agent.total_actions)
+                # If our choice isn't available then just take a random action.
+                # TODO: Should we be masking the unavailable actions and then selecting based on that distribution?
+                valid = fun_id in available_actions
+                if valid:
+                    required_args = agent.action_spec[0].functions[fun_id].args
+                    args = [[int(action_values[i] * size) for size in required_args[i].sizes]
+                                    for i in range(len(required_args))]
                     chosen_count += 1
+                else:
+                    fun_id = np.random.choice(available_actions)
+                    args = [[np.random.randint(0, size) for size in arg.sizes]
+                        for arg in agent.action_spec[0].functions[fun_id].args]
+                
+                action = actions.FunctionCall(fun_id, args)
 
                 try:
                     new_obs = game.step([action])[0]
                 except ValueError:
                     new_obs = game.step([actions.FunctionCall(0, [])])[0]
 
-                new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[
-                    0], new_obs.observation.available_actions
+                new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[0], new_obs.observation.available_actions
                 new_features = flattenFeatures(new_features)[:OBS_DIM]
+
+                # Zero out reward if we didn't pick a valid action
+                if not valid:
+                    r = 0
 
                 episode_reward += r
                 episode_step += 1
@@ -80,8 +97,8 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                 # Book-keeping.
                 epoch_actions.append(action)
                 epoch_qs.append(q)
-                agent.store_transition(
-                    features, action_index, r, new_features, done)
+                if r != 0 or chosen_count <= 5:
+                    agent.store_transition(features, fun_id, r, new_features, done)
                 obs = new_obs
                 features = new_features
 

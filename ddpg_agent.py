@@ -65,28 +65,11 @@ class DDPGAgent(object):
         self.ddpg = DDPG(actor=self.actor, critic=self.critic, memory=self.memory, observation_shape=obs_shape,
                          action_shape=(nb_actions, ), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
 
-    def step(self, obs, available_actions):
+    def step(self, obs):
         acts, q = self.ddpg.pi(obs, apply_noise=True, compute_Q=True)
-        # Move distribution from [-1, 1] to [0, 2] then scale it out to the total action space to select
-        normalized_actions = (2 - (acts + 1)) / 2
-        # First index of actions is the function id, rest are argument values
-        selected = int(normalized_actions[0] * self.total_actions)
-        # If our choice isn't available then just take a random action.
-        # TODO: Should we be masking the unavailable actions and then selecting based on that distribution?
-        valid = selected in available_actions
-        if valid:
-            function_id = selected
-        else:
-            function_id = np.random.choice(available_actions)
-        required_args = self.action_spec[0].functions[function_id].args
-        if valid:
-            args = [[int(normalized_actions[i] * size) for size in required_args[i].sizes]
-                            for i in range(len(required_args))]
-        else:
-            args = [[np.random.randint(0, size) for size in arg.sizes]
-                for arg in self.action_spec[0].functions[function_id].args]
-
-        return actions.FunctionCall(function_id, args), q, function_id, valid
+        # Move distribution from [-1, 1] to [0, 2] and convert to z-score
+        actions_z = (2 - (acts + 1)) / 2
+        return actions_z, q
 
     def reset(self):
         self.ddpg.reset()
