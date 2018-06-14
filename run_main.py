@@ -27,8 +27,8 @@ def flattenFeatures(obs):
     return flat_list
 
 def runAgent(agent, game, nb_epochs, nb_rollout_steps):
-    saver = tf.train.Saver()
     with tf.Session() as sess:
+        saver = tf.train.Saver()
         agent.initialize(sess)
         sess.graph.finalize()
         step = 0
@@ -59,9 +59,9 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
         explore_prob = 0.9 
         for epoch in range(nb_epochs):
             print("Starting epoch ", epoch)
+            explore_prob = explore_prob * np.power(0.999, epoch)
             # Perform rollouts.
             for t in range(nb_rollout_steps):
-                explore_prob = explore_prob * np.power(0.99999, epoch)
                 # Predict next action.
                 action_values, q = agent.step(features)
 
@@ -134,7 +134,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
                 epoch_critic_losses.append(cl)
                 epoch_actor_losses.append(al)
                 agent.ddpg.update_target_net()
-            #saver.save(sess, 'model_epoch', global_step=1)
+            saver.save(sess, './checkpoints/model_epoch', global_step=1)
 
             # Evaluate.
             # eval_episode_rewards = []
@@ -154,7 +154,7 @@ def runAgent(agent, game, nb_epochs, nb_rollout_steps):
             #       eval_episode_rewards.append(eval_episode_reward)
             #       eval_episode_rewards_history.append(eval_episode_reward)
             #       eval_episode_reward = 0.
-        # saver.save(sess, 'model_final')
+        saver.save(sess, './checkpoints/model_final')
 
 def main():
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
