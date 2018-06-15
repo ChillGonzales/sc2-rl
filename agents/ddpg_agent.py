@@ -1,4 +1,4 @@
-from pysc2.agents.base_agent import BaseAgent
+from base_agent import BaseAgent
 from pysc2.lib import features
 from pysc2.lib import actions
 import tensorflow as tf
@@ -14,23 +14,19 @@ _PLAYER_ENEMY = features.PlayerRelative.ENEMY
 
 FUNCTIONS = actions.FUNCTIONS
 
-
-def _xy_locs(mask):
-    """Mask should be a set of bools from comparison with a feature layer."""
-    y, x = mask.nonzero()
-    return list(zip(x, y))
-
-
-class DDPGAgent(object):
+class DDPGAgent(BaseAgent):
     """A Deep Deterministic Policy Gradient implementation of an SC2 agent."""
 
-    def __init__(self, action_spec):
-        self.action_spec = action_spec
+    def __init__(self):
+        super(DDPGAgent, self).__init__()
+        return
 
-    def setup(self, obs_shape, nb_actions, total_actions, noise_type, gamma=1., tau=0.01, layer_norm=True):
+    def setup(self, obs_shape, nb_actions, action_spec, noise_type, gamma=1., tau=0.01, layer_norm=True):
+        super(DDPGAgent, self).setup(obs_shape, nb_actions, action_spec, noise_type, gamma, tau, layer_norm)
+
+        self.action_spec = action_spec
         action_noise = None
         param_noise = None
-        self.total_actions = total_actions
 
         # Parse noise_type
         for current_noise_type in noise_type.split(','):
@@ -66,16 +62,41 @@ class DDPGAgent(object):
                          action_shape=(nb_actions, ), gamma=gamma, tau=tau, action_noise=action_noise, param_noise=param_noise)
 
     def step(self, obs):
-        acts, q = self.ddpg.pi(obs, apply_noise=True, compute_Q=True)
+        super(DDPGAgent, self).step(obs)
+        acts, q = self.ddpg.p(obs, apply_noise=True, compute_Q=True)
         # Move distribution from [-1, 1] to [0, 2] and convert to z-score
         actions_z = (2 - (acts + 1)) / 2
         return actions_z, q
 
     def reset(self):
+        super(DDPGAgent, self).reset()
         self.ddpg.reset()
 
     def initialize(self, sess):
+        super(DDPGAgent, self).initialize(sess)
         self.ddpg.initialize(sess)
 
     def store_transition(self, obs, action, r, new_obs, done):
+        super(DDPGAgent, self).store_transition(obs, action, r, new_obs, done)
         self.ddpg.store_transition(obs, action, r, new_obs, done)
+    
+    def train(self):
+        super(DDPGAgent, self).train()
+        return self.ddpg.train()
+    
+    def adapt_param_noise(self):
+        super(DDPGAgent, self).adapt_param_noise()
+        return self.ddpg.adapt_param_noise()
+    
+    def backprop(self):
+        super(DDPGAgent, self).backprop()
+        self.ddpg.update_target_network()
+    
+    def get_memory_size(self):
+        super(DDPGAgent, self).get_memory_size()
+        return self.memory.nb_entries
+    
+    @property
+    def action_spec(self):
+        super(DDPGAgent, self).action_spec()
+        return self.action_spec
