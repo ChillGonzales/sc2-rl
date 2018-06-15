@@ -58,6 +58,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
         for epoch in range(nb_epochs):
             print("Starting epoch", epoch)
+            # Exponentially decay our explore rate over time
             explore_prob = explore_prob * np.power(0.999, epoch)
 
             # Perform rollouts.
@@ -67,7 +68,6 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
                 # First index of actions is the function id, rest are argument values
                 fun_id = available_actions[int(action_values[0] * len(available_actions))]
-                # valid = fun_id in available_actions
 
                 # Choose the network's output with a probability of (1-explore_prob)
                 if random.random() > explore_prob:
@@ -91,10 +91,9 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                 new_features, r, available_actions = new_obs.observation, int(np.sum(new_obs.observation.score_cumulative[3:7])), new_obs.observation.available_actions
                 new_features = flatten_features(new_features)[:OBS_DIM] # Trim off feature set in case it changes size to fit network
 
+                # Book-keeping
                 episode_reward += r
                 episode_step += 1
-
-                # Book-keeping
                 epoch_actions.append(action)
                 epoch_qs.append(q)
                 agent.store_transition(features, fun_id, r, new_features, done)
@@ -142,12 +141,12 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
         saver.save(sess, './checkpoints/model_final')
 
-def main(nb_epochs, max_rollouts, agent_type_name, map_name):
+def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
     format = AgentInterfaceFormat(feature_dimensions=dims)
     game = SC2Env(map_name=map_name,
                   players=[Agent(Race.zerg), Bot(Race.terran, Difficulty.easy)],
-                  step_mul=16,
+                  step_mul=step_mul,
                   agent_interface_format=format,
                   visualize=False)
 
@@ -181,4 +180,8 @@ if __name__ == "__main__":
     FLAGS = flags.FLAGS
     FLAGS(sys.argv)
     args = parser.parse_args()
-    main(args.epoch, args.rollout, args.agent, args.map)
+    main(nb_epochs=args.epoch, 
+         max_rollouts=args.rollout, 
+         agent_type_name=args.agent, 
+         map_name=args.map,
+         step_mul=args.stepmul)
