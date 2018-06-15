@@ -1,4 +1,4 @@
-from base_agent import BaseAgent
+from agents.base_agent import BaseAgent
 from pysc2.lib import features
 from pysc2.lib import actions
 import tensorflow as tf
@@ -24,7 +24,8 @@ class DDPGAgent(BaseAgent):
     def setup(self, obs_shape, nb_actions, action_spec, noise_type, gamma=1., tau=0.01, layer_norm=True):
         super(DDPGAgent, self).setup(obs_shape, nb_actions, action_spec, noise_type, gamma, tau, layer_norm)
 
-        self.action_spec = action_spec
+        self.action_spec_internal = action_spec
+        self.obs_dim = obs_shape
         action_noise = None
         param_noise = None
 
@@ -50,7 +51,7 @@ class DDPGAgent(BaseAgent):
                     'unknown noise type "{}"'.format(current_noise_type))
 
         # Configure components.
-        self.memory = Memory(limit=int(50), action_shape=(
+        self.memory = Memory(limit=int(1000), action_shape=(
             nb_actions, ), observation_shape=obs_shape)
         self.critic = Critic(layer_norm=layer_norm)
         self.actor = Actor(nb_actions, layer_norm=layer_norm)
@@ -63,7 +64,7 @@ class DDPGAgent(BaseAgent):
 
     def step(self, obs):
         super(DDPGAgent, self).step(obs)
-        acts, q = self.ddpg.p(obs, apply_noise=True, compute_Q=True)
+        acts, q = self.ddpg.pi(obs, apply_noise=True, compute_Q=True)
         # Move distribution from [-1, 1] to [0, 2] and convert to z-score
         actions_z = (2 - (acts + 1)) / 2
         return actions_z, q
@@ -90,7 +91,7 @@ class DDPGAgent(BaseAgent):
     
     def backprop(self):
         super(DDPGAgent, self).backprop()
-        self.ddpg.update_target_network()
+        self.ddpg.update_target_net()
     
     def get_memory_size(self):
         super(DDPGAgent, self).get_memory_size()
@@ -98,5 +99,8 @@ class DDPGAgent(BaseAgent):
     
     @property
     def action_spec(self):
-        super(DDPGAgent, self).action_spec()
-        return self.action_spec
+        return self.action_spec_internal
+    
+    @property
+    def obs_shape(self):
+        return self.obs_dim

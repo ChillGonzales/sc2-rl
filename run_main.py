@@ -1,7 +1,7 @@
 from pysc2.lib import features
 from pysc2.lib import actions
 from pysc2.env.sc2_env import SC2Env, Agent, Race, Bot, Difficulty
-from agent_factory import get_agent_from_name
+from agents.agent_factory import get_agent_from_name
 from collections import deque
 import baselines.common.tf_util as U
 import numpy as np
@@ -13,7 +13,6 @@ import time
 # Global variables/aliases
 Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
-OBS_DIM = 0
 ACT_DIM = 7
 TOTAL_FN = 541
 
@@ -59,7 +58,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
         for epoch in range(nb_epochs):
             print("Starting epoch", epoch)
             # Exponentially decay our explore rate over time
-            explore_prob = explore_prob * np.power(0.999, epoch)
+            explore_prob = explore_prob * np.power(0.99, epoch)
 
             # Perform rollouts.
             for t in range(nb_rollout_steps):
@@ -67,7 +66,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                 action_values, q = agent.step(features)
 
                 # First index of actions is the function id, rest are argument values
-                fun_id = available_actions[int(action_values[0] * len(available_actions))]
+                fun_id = available_actions[int(action_values[0] * len(available_actions)) - 1]
 
                 # Choose the network's output with a probability of (1-explore_prob)
                 if random.random() > explore_prob:
@@ -89,7 +88,11 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
                 # TODO: Do we use game score for rewards or win/loss? 
                 new_features, r, available_actions = new_obs.observation, int(np.sum(new_obs.observation.score_cumulative[3:7])), new_obs.observation.available_actions
-                new_features = flatten_features(new_features)[:OBS_DIM] # Trim off feature set in case it changes size to fit network
+                new_features = flatten_features(new_features)[:agent.obs_shape[0]] # Trim off feature set in case it changes size to fit network
+                diff = agent.obs_shape[0] - len(new_features)
+                if diff > 0:
+                    new_features = np.append(new_features, [0 for i in range(0, diff)])
+                    new_features.flatten()
 
                 # Book-keeping
                 episode_reward += r
@@ -118,7 +121,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
             epoch_critic_losses = []
             epoch_adaptive_distances = []
             nb_train_steps = 25
-            batch_size = 25
+            batch_size = 500
             param_noise_adaptation_interval = 25
             print("Training network...")
             for t_train in range(nb_train_steps):
@@ -131,7 +134,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                 epoch_critic_losses.append(cl)
                 epoch_actor_losses.append(al)
                 agent.ddpg.update_target_net()
-            saver.save(sess, './checkpoints/model_epoch', global_step=1)
+            saver.save(sess, './checkpoints/model_epoch', global_step=epoch)
 
             # Reset game after training is complete
             agent.reset()
@@ -145,19 +148,19 @@ def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
     format = AgentInterfaceFormat(feature_dimensions=dims)
     game = SC2Env(map_name=map_name,
-                  players=[Agent(Race.zerg), Bot(Race.terran, Difficulty.easy)],
+                  players=[Agent(Race.protoss), Bot(Race.terran, Difficulty.easy)],
                   step_mul=step_mul,
                   agent_interface_format=format,
                   visualize=False)
 
     # Set size of network by resetting the game to get observation space
-    init_obs = game.reset()
-    OBS_DIM = len(flatten_features(init_obs.observation))
+    init_obs = game.reset()[0]
+    obs_dimension = len(flatten_features(init_obs.observation))
 
     agent = get_agent_from_name(agent_type_name)
 
     # Setup agent
-    obs_shape = (OBS_DIM, )
+    obs_shape = (obs_dimension, )
     nb_actions = ACT_DIM
     agent.setup(obs_shape=obs_shape, 
                 nb_actions=nb_actions, 
@@ -173,13 +176,13 @@ if __name__ == "__main__":
     parser.add_argument("--rollout", default=10000, help="Number of rollouts to limit the agent to per epoch.")
     parser.add_argument("--agent", default="ddpg", help="Name of agent type to train with. Available: 'ddpg'")
     parser.add_argument("--map", default="Simple64", help="Name of map to train agent on.")
-    parser.add_argument("--stepmul", default=2, help="Action step to game step multiplier."
+    parser.add_argument("--stepmul", default=16, help="Action step to game step multiplier."
         "The higher the number the more steps the game will take between agent actions.")
+    args = parser.parse_args()
     import sys
     from absl import flags
     FLAGS = flags.FLAGS
     FLAGS(sys.argv)
-    args = parser.parse_args()
     main(nb_epochs=args.epoch, 
          max_rollouts=args.rollout, 
          agent_type_name=args.agent, 

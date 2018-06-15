@@ -34,3 +34,7 @@ class BaseAgent(object):
   @property
   def action_spec(self):
     return
+  
+  @property 
+  def obs_shape(self):
+    return
