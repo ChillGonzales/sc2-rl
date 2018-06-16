@@ -51,7 +51,7 @@ class DDPGAgent(BaseAgent):
                     'unknown noise type "{}"'.format(current_noise_type))
 
         # Configure components.
-        self.memory = Memory(limit=int(1000), action_shape=(
+        self.memory = Memory(limit=int(500), action_shape=(
             nb_actions, ), observation_shape=obs_shape)
         self.critic = Critic(layer_norm=layer_norm, hidden_size=128)
         self.actor = Actor(nb_actions, layer_norm=layer_norm, hidden_size=128)

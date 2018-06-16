@@ -58,7 +58,9 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
         for epoch in range(nb_epochs):
             print("Starting epoch", epoch)
             # Exponentially decay our explore rate over time
-            explore_prob = explore_prob * np.power(0.99, epoch)
+            explore_prob = explore_prob * np.power(0.999, epoch)
+            if explore_prob < 0.01:
+                explore_prob = 0.01
 
             # Perform rollouts.
             for t in range(nb_rollout_steps):
@@ -87,7 +89,8 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                     new_obs = game.step([actions.FunctionCall(0, [])])[0]
 
                 # TODO: Do we use game score for rewards or win/loss? 
-                new_features, r, available_actions = new_obs.observation, int(np.sum(new_obs.observation.score_cumulative[3:7])), new_obs.observation.available_actions
+                #int(np.sum(new_obs.observation.score_cumulative[3:7])),
+                new_features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
                 new_features = flatten_features(new_features)[:agent.obs_shape[0]] # Trim off feature set in case it changes size to fit network
                 diff = agent.obs_shape[0] - len(new_features)
                 if diff > 0:
