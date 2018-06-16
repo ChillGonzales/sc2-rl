@@ -179,6 +179,7 @@ if __name__ == "__main__":
     parser.add_argument("--stepmul", default=16, help="Action step to game step multiplier."
         "The higher the number the more steps the game will take between agent actions.")
     args = parser.parse_args()
+    # TODO: Figure out how to remove this flags stuff without breaking sc2 environment
     import sys
     from absl import flags
     FLAGS = flags.FLAGS

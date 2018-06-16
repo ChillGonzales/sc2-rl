@@ -53,8 +53,8 @@ class DDPGAgent(BaseAgent):
         # Configure components.
         self.memory = Memory(limit=int(1000), action_shape=(
             nb_actions, ), observation_shape=obs_shape)
-        self.critic = Critic(layer_norm=layer_norm)
-        self.actor = Actor(nb_actions, layer_norm=layer_norm)
+        self.critic = Critic(layer_norm=layer_norm, hidden_size=128)
+        self.actor = Actor(nb_actions, layer_norm=layer_norm, hidden_size=128)
 
         tf.reset_default_graph()
 
