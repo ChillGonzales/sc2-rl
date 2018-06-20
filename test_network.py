@@ -4,21 +4,17 @@ from run_main import flatten_features
 from pysc2.lib import features
 from pysc2.lib import actions
 from pysc2.env.sc2_env import SC2Env, Agent, Race, Bot, Difficulty
-from agents.agent_factory import get_agent_from_name
+from factories import get_agent_from_name, get_game_env
 
 Dimensions = features.Dimensions
 AgentInterfaceFormat = features.AgentInterfaceFormat
 
 def main():
-    dims = Dimensions(screen=(200, 200), minimap=(50, 50))
-    format = AgentInterfaceFormat(feature_dimensions=dims)
-    game = SC2Env(map_name="Simple64",
-                players=[Agent(Race.protoss), Bot(Race.terran, Difficulty.easy)],
-                agent_interface_format=format,
-                visualize=True)
-
+    game = get_game_env(map_name="CollectMineralShards",
+                        players=[],
+                        step_mul=1,
+                        visualize=True)
     agent = get_agent_from_name("ddpg")
-
 
     obs = game.reset()[0]  # Only care about 1 agent right now
     features, available_actions = flatten_features(obs.observation), obs.observation.available_actions
@@ -30,7 +26,6 @@ def main():
                 nb_actions=nb_actions, 
                 action_spec=game.action_spec(),
                 noise_type="adaptive-param_0.01,ou_0.01")
-
     
     with tf.Session() as sess:
         agent.initialize(sess)

@@ -1,7 +1,7 @@
 from pysc2.lib import features
 from pysc2.lib import actions
 from pysc2.env.sc2_env import SC2Env, Agent, Race, Bot, Difficulty
-from agents.agent_factory import get_agent_from_name
+from factories import get_agent_from_name, get_game_env
 from collections import deque
 import baselines.common.tf_util as U
 import numpy as np
@@ -10,9 +10,7 @@ import argparse
 import random
 import time
 
-# Global variables/aliases
-Dimensions = features.Dimensions
-AgentInterfaceFormat = features.AgentInterfaceFormat
+# Global variables
 ACT_DIM = 7
 TOTAL_FN = 541
 
@@ -148,13 +146,9 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
         saver.save(sess, './checkpoints/model_final')
 
 def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
-    dims = Dimensions(screen=(200, 200), minimap=(50, 50))
-    format = AgentInterfaceFormat(feature_dimensions=dims)
-    game = SC2Env(map_name=map_name,
-                  players=[Agent(Race.protoss)], #Bot(Race.terran, Difficulty.easy)],
-                  step_mul=step_mul,
-                  agent_interface_format=format,
-                  visualize=False)
+    game = get_game_env(step_mul=step_mul,
+                        map_name=map_name,
+                        players=[])
 
     # Set size of network by resetting the game to get observation space
     init_obs = game.reset()[0]
