@@ -8,7 +8,7 @@ In order to install the baselines fork on Windows you have to do the following:
 2) Install this forked version of OpenAI's atari-py (atari py doesn't support windows currently): 
 ```
 pip install --no-index -f https://github.com/Kojoley/atari-py/releases atari_py
-``
+```
 3) Download and run both MPI installers from the following link: https://www.microsoft.com/en-us/download/details.aspx?id=56727
 4) Install baselines using the following command:
 ```
