@@ -90,7 +90,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
                 # TODO: Do we use game score for rewards or win/loss? 
                 #int(np.sum(new_obs.observation.score_cumulative[3:7])),
-                new_features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
+                new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[0], new_obs.observation.available_actions
                 new_features = flatten_features(new_features)[:agent.obs_shape[0]] # Trim off feature set in case it changes size to fit network
                 diff = agent.obs_shape[0] - len(new_features)
                 if diff > 0:
@@ -124,7 +124,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
             epoch_critic_losses = []
             epoch_adaptive_distances = []
             nb_train_steps = 25
-            batch_size = 500
+            batch_size = int(agent.memory.nb_entries / 2)
             param_noise_adaptation_interval = 25
             print("Training network...")
             for t_train in range(nb_train_steps):
@@ -151,7 +151,7 @@ def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
     dims = Dimensions(screen=(200, 200), minimap=(50, 50))
     format = AgentInterfaceFormat(feature_dimensions=dims)
     game = SC2Env(map_name=map_name,
-                  players=[Agent(Race.protoss), Bot(Race.terran, Difficulty.easy)],
+                  players=[Agent(Race.protoss)], #Bot(Race.terran, Difficulty.easy)],
                   step_mul=step_mul,
                   agent_interface_format=format,
                   visualize=False)
@@ -175,11 +175,11 @@ def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epoch", default=200, help="Number of epochs to train the agent.")
+    parser.add_argument("--epoch", default=500, help="Number of epochs to train the agent.")
     parser.add_argument("--rollout", default=10000, help="Number of rollouts to limit the agent to per epoch.")
     parser.add_argument("--agent", default="ddpg", help="Name of agent type to train with. Available: 'ddpg'")
-    parser.add_argument("--map", default="Simple64", help="Name of map to train agent on.")
-    parser.add_argument("--stepmul", default=16, help="Action step to game step multiplier."
+    parser.add_argument("--map", default="CollectMineralShards", help="Name of map to train agent on.")
+    parser.add_argument("--stepmul", default=3, help="Action step to game step multiplier."
         "The higher the number the more steps the game will take between agent actions.")
     args = parser.parse_args()
     # TODO: Figure out how to remove this flags stuff without breaking sc2 environment
