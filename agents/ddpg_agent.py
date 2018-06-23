@@ -51,8 +51,9 @@ class DDPGAgent(BaseAgent):
                     'unknown noise type "{}"'.format(current_noise_type))
 
         # Configure components.
-        self.memory = Memory(limit=int(500), action_shape=(
-            nb_actions, ), observation_shape=obs_shape)
+        self.memory = Memory(limit=int(500), 
+                            action_shape=(nb_actions, ), 
+                            observation_shape=obs_shape)
         self.critic = Critic(layer_norm=layer_norm, hidden_size=128)
         self.actor = Actor(nb_actions, layer_norm=layer_norm, hidden_size=128)
 
@@ -65,9 +66,7 @@ class DDPGAgent(BaseAgent):
     def step(self, obs):
         super(DDPGAgent, self).step(obs)
         acts, q = self.ddpg.pi(obs, apply_noise=True, compute_Q=True)
-        # Move distribution from [-1, 1] to [0, 2] and convert to z-score
-        actions_z = (2 - (acts + 1)) / 2
-        return actions_z, q
+        return acts, q
 
     def reset(self):
         super(DDPGAgent, self).reset()

@@ -9,6 +9,7 @@ import tensorflow as tf
 import argparse
 import random
 import time
+import utils
 
 # Global variables
 ACT_DIM = 7
@@ -44,47 +45,33 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
 
         epoch_episode_rewards = []
         epoch_episode_steps = []
-        epoch_episode_eval_rewards = []
-        epoch_episode_eval_steps = []
         epoch_start_time = time.time()
         epoch_actions = []
         epoch_qs = []
         epoch_episodes = 0
-        chosen_count = 0
-        explore_prob = 0.9 
 
         for epoch in range(nb_epochs):
             print("Starting epoch", epoch)
-            # Exponentially decay our explore rate over time
-            explore_prob = explore_prob * np.power(0.999, epoch)
-            if explore_prob < 0.01:
-                explore_prob = 0.01
-
             # Perform rollouts.
             for t in range(nb_rollout_steps):
                 # Predict next action.
                 action_values, q = agent.step(features)
+                z_action = utils.convert_to_zscore(action_values[0])
 
                 # First index of actions is the function id, rest are argument values
-                fun_id = available_actions[int(action_values[0] * len(available_actions)) - 1]
+                fun_id = available_actions[int(z_action * len(available_actions)) - 1]
 
                 # Choose the network's output with a probability of (1-explore_prob)
-                if random.random() > explore_prob:
-                    required_args = agent.action_spec[0].functions[fun_id].args
-                    args = [[int(action_values[i] * size) for size in required_args[i].sizes]
-                                    for i in range(len(required_args))]
-                    chosen_count += 1
-                else:
-                    # "Explore" with random action and args
-                    fun_id = np.random.choice(available_actions)
-                    args = [[np.random.randint(0, size) for size in arg.sizes]
-                        for arg in agent.action_spec[0].functions[fun_id].args]
-                
+                required_args = agent.action_spec[0].functions[fun_id].args
+                args = [[int(action_values[i] * size) for size in required_args[i].sizes]
+                                for i in range(len(required_args))]
+
                 try:
                     action = actions.FunctionCall(fun_id, args)
                     new_obs = game.step([action])[0]
                 except ValueError:
                     new_obs = game.step([actions.FunctionCall(0, [])])[0]
+                    print("Invalid action chosen. Function id:", fun_id, "Args:", args)
 
                 # TODO: Do we use game score for rewards or win/loss? 
                 #int(np.sum(new_obs.observation.score_cumulative[3:7])),
@@ -100,22 +87,21 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                 episode_step += 1
                 epoch_actions.append(action)
                 epoch_qs.append(q)
-                agent.store_transition(features, fun_id, r, new_features, done)
+                agent.store_transition(features, action_values, r, new_features, done)
                 obs = new_obs
                 features = new_features
 
                 if obs.last():
-                    # Episode done.
-                    epoch_episode_rewards.append(episode_reward)
-                    episode_rewards_history.append(episode_reward)
-                    epoch_episode_steps.append(episode_step)
-                    print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Chosen percent:",
-                          (chosen_count / (t + 1)) * 100, ". Explore Prob: ", explore_prob, ". Steps taken:", t + 1, ". Win:", obs.reward != -1)
-                    episode_reward = 0.
-                    episode_step = 0
-                    chosen_count = 0
-                    epoch_episodes += 1
                     break
+
+            # Epoch done.
+            epoch_episode_rewards.append(episode_reward)
+            episode_rewards_history.append(episode_reward)
+            epoch_episode_steps.append(episode_step)
+            print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Steps taken:", t + 1)
+            episode_reward = 0.
+            episode_step = 0
+            epoch_episodes += 1
 
             # Train.
             epoch_actor_losses = []
