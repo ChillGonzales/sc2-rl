@@ -18,8 +18,11 @@ TOTAL_FN = 541
 def flatten_features(obs):
     flat_list = np.array([])
     feature_keys = ['single_select', 'multi_select', 'build_queue', 'cargo', 'cargo_slots_available', 'feature_screen',
-      'feature_minimap', 'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 
+      'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 
       'available_actions']
+    # feature_keys = ['single_select', 'multi_select', 'build_queue', 'cargo', 'cargo_slots_available', 'rgb_screen',
+    #   'rgb_minimap', 'last_actions', 'action_result', 'alerts', 'game_loop', 'score_cumulative', 'player', 'control_groups', 
+    #   'available_actions']
     for feature in feature_keys:
         for lst in obs[feature]:
             flat_list = np.append(flat_list, lst)
@@ -49,33 +52,58 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
         epoch_actions = []
         epoch_qs = []
         epoch_episodes = 0
+        explore_prob = 0.9
+        chosen_count = 0
+        override_r = False
 
         for epoch in range(nb_epochs):
             print("Starting epoch", epoch)
+            # Exponentially decay our explore rate over time 
+            explore_prob = explore_prob * np.power(0.999, epoch) 
+            if explore_prob < 0.01: 
+                explore_prob = 0.01 
+
             # Perform rollouts.
             for t in range(nb_rollout_steps):
                 # Predict next action.
                 action_values, q = agent.step(features)
-                z_action = utils.convert_to_zscore(action_values[0])
+                z_action_values = utils.convert_to_zscore(action_values)
 
                 # First index of actions is the function id, rest are argument values
-                fun_id = available_actions[int(z_action * len(available_actions)) - 1]
+                available_actions = np.sort(available_actions, kind='mergesort')
+                fun_id = available_actions[int(z_action_values[0] * len(available_actions)) - 1]
+                required_args = actions.FUNCTIONS[fun_id].args
 
-                # Choose the network's output with a probability of (1-explore_prob)
-                required_args = agent.action_spec[0].functions[fun_id].args
-                args = [[int(action_values[i] * size) for size in required_args[i].sizes]
-                                for i in range(len(required_args))]
+                # Choose the network's output with a probability of (1-explore_prob) 
+                if random.random() > explore_prob: 
+                    # required_args = agent.action_spec[0].functions[fun_id].args
+                    args = []
+                    i = 1
+                    for arg in required_args:
+                        sizes = []
+                        for size in arg.sizes:
+                            sizes.append(int(z_action_values[i] * (size - 1)))
+                            i += 1
+                        args.append(sizes)
+
+                    chosen_count += 1 
+                else: 
+                    # "Explore" with random action and args 
+                    fun_id = np.random.choice(available_actions) 
+                    args = [[np.random.randint(0, size) for size in arg.sizes] 
+                        for arg in agent.action_spec[0].functions[fun_id].args] 
 
                 try:
                     action = actions.FunctionCall(fun_id, args)
                     new_obs = game.step([action])[0]
                 except ValueError:
                     new_obs = game.step([actions.FunctionCall(0, [])])[0]
-                    print("Invalid action chosen. Function id:", fun_id, "Args:", args)
+                    override_r = True
+                    print("Invalid action/args chosen. Function id:", fun_id, "Args:", args, "Available:", available_actions, "Available args:", required_args)
 
                 # TODO: Do we use game score for rewards or win/loss? 
                 #int(np.sum(new_obs.observation.score_cumulative[3:7])),
-                new_features, r, available_actions = new_obs.observation, new_obs.observation.score_cumulative[0], new_obs.observation.available_actions
+                new_features, r, available_actions = new_obs.observation, new_obs.reward, new_obs.observation.available_actions
                 new_features = flatten_features(new_features)[:agent.obs_shape[0]] # Trim off feature set in case it changes size to fit network
                 diff = agent.obs_shape[0] - len(new_features)
                 if diff > 0:
@@ -83,6 +111,8 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                     new_features.flatten()
 
                 # Book-keeping
+                if override_r:
+                    r = -1
                 episode_reward += r
                 episode_step += 1
                 epoch_actions.append(action)
@@ -90,6 +120,7 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
                 agent.store_transition(features, action_values, r, new_features, done)
                 obs = new_obs
                 features = new_features
+                override_r = False
 
                 if obs.last():
                     break
@@ -98,16 +129,18 @@ def run_agent(agent, game, nb_epochs, nb_rollout_steps):
             epoch_episode_rewards.append(episode_reward)
             episode_rewards_history.append(episode_reward)
             epoch_episode_steps.append(episode_step)
-            print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Steps taken:", t + 1)
+            print("Epoch", epoch, "complete. Total reward:", episode_reward, ". Final reward:", r, ". Chosen percent:", 
+                          (chosen_count / (t + 1)) * 100, ". Explore Prob: ", explore_prob, ". Steps taken:", t + 1, ". Win:", obs.reward != -1) 
             episode_reward = 0.
             episode_step = 0
             epoch_episodes += 1
+            chosen_count = 0
 
             # Train.
             epoch_actor_losses = []
             epoch_critic_losses = []
             epoch_adaptive_distances = []
-            nb_train_steps = 25
+            nb_train_steps = 100
             batch_size = int(agent.memory.nb_entries / 2)
             param_noise_adaptation_interval = 25
             print("Training network...")
@@ -138,6 +171,7 @@ def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
 
     # Set size of network by resetting the game to get observation space
     init_obs = game.reset()[0]
+    print(np.shape(init_obs.observation.feature_screen))
     obs_dimension = len(flatten_features(init_obs.observation))
 
     agent = get_agent_from_name(agent_type_name)
@@ -155,10 +189,10 @@ def main(nb_epochs, max_rollouts, agent_type_name, map_name, step_mul):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epoch", default=500, help="Number of epochs to train the agent.")
-    parser.add_argument("--rollout", default=10000, help="Number of rollouts to limit the agent to per epoch.")
+    parser.add_argument("--epoch", default=2500, help="Number of epochs to train the agent.")
+    parser.add_argument("--rollout", default=512, help="Number of rollouts to limit the agent to per epoch.")
     parser.add_argument("--agent", default="ddpg", help="Name of agent type to train with. Available: 'ddpg'")
-    parser.add_argument("--map", default="CollectMineralShards", help="Name of map to train agent on.")
+    parser.add_argument("--map", default="MoveToBeacon", help="Name of map to train agent on.")
     parser.add_argument("--stepmul", default=3, help="Action step to game step multiplier."
         "The higher the number the more steps the game will take between agent actions.")
     args = parser.parse_args()

@@ -11,9 +11,9 @@ def get_agent_from_name(name="ddpg"):
 
 """ Factory for providing game instance """
 def get_game_env(use_rgb=False, 
-                screen_dims=(400, 400), 
+                screen_dims=(150, 150), 
                 minimap_dims=(50, 50), 
-                map_name="CollectMineralShards", 
+                map_name="MoveToBeacon", 
                 players=[], 
                 step_mul=3,
                 visualize=False):
@@ -22,7 +22,7 @@ def get_game_env(use_rgb=False,
     AgentInterfaceFormat = features.AgentInterfaceFormat
 
     dims = Dimensions(screen=screen_dims, minimap=minimap_dims)
-    format = AgentInterfaceFormat(feature_dimensions=dims)
+    format = AgentInterfaceFormat(feature_dimensions=dims, action_space=actions.ActionSpace.FEATURES)
     game = SC2Env(map_name=map_name,
                     players=players,
                     step_mul=step_mul,
